@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @python: 3.6
 
-from models.resnet import ResNet18_cifar
+from models.resnet import ResNet18_cifar, ResNet18_widar
 from models.mobileNetV2 import MobileNetV2
 from models.vgg import vgg_16_bn
 from models.Nets import CNNCifar, CNNMnist, ModelFedCon, CNNFashionMnist

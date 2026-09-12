@@ -23,6 +23,7 @@ from utils.utils import save_result
 from utils.set_seed import set_random_seed
 from Algorithm.Training_AdaptiveFL import AdaptiveFL
 from Algorithm.Training_HeteroFL import HeteroFL
+from Algorithm.Training_SemConsFL import SemConsFL
 
 import sys
 import logging
@@ -145,7 +146,9 @@ if __name__ == '__main__':
     args = args_parser()
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
 
-    algorithms = ['AdaptiveFL']
+    # Keep existing --algorithm usable; this entry point now defaults to SemConsFL.
+    explicit_algorithm = any(x == '--algorithm' or x.startswith('--algorithm=') for x in sys.argv[1:])
+    algorithms = [args.algorithm if explicit_algorithm else 'SemConsFL']
 
     for algorithm in algorithms:
         args.data_beta = 0.3
@@ -153,6 +156,10 @@ if __name__ == '__main__':
         args.model = 'resnet'
         args.dataset = 'cifar10'
         args.algorithm = algorithm
+        if algorithm == 'SemConsFL':
+            args.iid = 0
+            args.run_dir = os.path.join('result_semconsfl', stamp)
+            os.makedirs(args.run_dir, exist_ok=True)
 
         if args.dataset.lower() == 'cifar10':
             args.num_classes = 10
@@ -165,7 +172,9 @@ if __name__ == '__main__':
 
 
 
-        log_path = os.path.join(run_dir, "%s_%s_%s_%s_%s_%s.log" % (str(args.data_beta), args.dataset,args.algorithm,args.model,args.agg_exp,stamp))
+        log_path = os.path.join(
+            args.run_dir if algorithm == 'SemConsFL' else run_dir,
+            "%s_%s_%s_%s_%s.log" % (str(args.data_beta), args.dataset, args.algorithm, args.model, stamp))
 
 
         logging.basicConfig(level=logging.DEBUG,
@@ -210,6 +219,10 @@ if __name__ == '__main__':
             args.depth_saved = [2, 3, 4]
             args.width_ration = [0.4, 0.66, 1.0]
             AdaptiveFL(args, dataset_train, dataset_test, dict_users)
+        elif args.algorithm == 'SemConsFL':
+            args.depth_saved = [2, 3, 4]
+            args.width_ration = [0.4, 0.66, 1.0]
+            SemConsFL(args, dataset_train, dataset_test, dict_users)
         elif args.algorithm == 'HeteroFL':
             args.depth_saved = [0]
             args.width_ration = [0.5, 0.71, 1.0]

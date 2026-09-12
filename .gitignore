@@ -1,0 +1,4 @@
+# Generated Python bytecode and local experiment artifacts
+__pycache__/
+*.py[cod]
+tmp/
