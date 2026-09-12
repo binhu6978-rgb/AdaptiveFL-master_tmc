@@ -1,55 +1,79 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @python: 3.6
-
 import torch
-from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-
 def test(net_glob, dataset_test, args):
-    # testing
     acc_test, loss_test = test_img(net_glob, dataset_test, args)
-
     print("Testing accuracy: {:.2f}".format(acc_test))
-
-    return acc_test.item()
+    return acc_test
 
 
 def test_img(net_g, datatest, args):
     net_g.eval()
-    # testing
-    test_loss = 0
-    correct = 0
-    data_loader = DataLoader(datatest, batch_size=args.bs)
-    l = len(data_loader)
-    with torch.no_grad():
-        for idx, (data, target) in enumerate(data_loader):
-            if "transformer" in args.model:
-                if args.gpu != -1:
-                    data, target = data.to(args.device), target.to(args.device)
-                log_probs = net_g(data)['output']
-                # sum up batch loss
-                test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
-                # get the index of the max log-probability
-                y_pred = log_probs.data.max(1, keepdim=True)[1]
-                correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
-            else:
-                if args.gpu != -1:
-                    data, target = data.to(args.device), target.to(args.device)
-                if args.dataset == 'widar':
-                    target = target.long()
-                log_probs = net_g(data)['output']
-                # sum up batch loss
-                test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
-                # get the index of the max log-probability
-                y_pred = log_probs.data.max(1, keepdim=True)[1]
-                correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
 
-    test_loss /= len(data_loader.dataset)
-    accuracy = 100.00 * correct / len(data_loader.dataset)
+    data_loader = DataLoader(
+        datatest,
+        batch_size=getattr(args, "test_bs", args.bs),
+        shuffle=False,
+        num_workers=0,   # 先用0排查，稳定后再试2/4
+        pin_memory=True
+    )
+
+    use_cuda = (args.gpu != -1) and torch.cuda.is_available()
+
+    if use_cuda:
+        device = args.device
+        test_loss = torch.zeros(1, device=device)
+        correct = torch.zeros(1, device=device)
+    else:
+        device = torch.device("cpu")
+        test_loss = 0.0
+        correct = 0
+
+    with torch.no_grad():
+        for data, target in data_loader:
+            # target 统一转 tensor
+            if not torch.is_tensor(target):
+                target = torch.tensor(target)
+
+            # 保证 target 至少是一维
+            if target.dim() == 0:
+                target = target.unsqueeze(0)
+
+            target = target.long()
+
+            if use_cuda:
+                if not torch.is_tensor(data):
+                    data = torch.tensor(data)
+                data = data.to(device, non_blocking=True)
+                target = target.to(device, non_blocking=True)
+
+            output = net_g(data)
+            log_probs = output['output'] if isinstance(output, dict) else output
+
+            if use_cuda:
+                test_loss += F.cross_entropy(log_probs, target, reduction='sum')
+                pred = log_probs.argmax(dim=1)
+                correct += (pred == target).sum()
+            else:
+                test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
+                pred = log_probs.argmax(dim=1)
+                correct += (pred == target).sum().item()
+
+    if use_cuda:
+        test_loss = (test_loss / len(data_loader.dataset)).item()
+        accuracy = (100.0 * correct / len(data_loader.dataset)).item()
+        correct_num = int(correct.item())
+    else:
+        test_loss = test_loss / len(data_loader.dataset)
+        accuracy = 100.0 * correct / len(data_loader.dataset)
+        correct_num = int(correct)
+
     if args.verbose:
-        print('\nTest set: Average loss: {:.4f} \nAccuracy: {}/{} ({:.2f}%)\n'.format(
-            test_loss, correct, len(data_loader.dataset), accuracy))
+        print(
+            '\nTest set: Average loss: {:.4f}\nAccuracy: {}/{} ({:.2f}%)\n'.format(
+                test_loss, correct_num, len(data_loader.dataset), accuracy
+            )
+        )
+
     return accuracy, test_loss

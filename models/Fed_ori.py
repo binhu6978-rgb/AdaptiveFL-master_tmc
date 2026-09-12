@@ -9,7 +9,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 
-from models import vgg_16_bn, ResNet18_cifar, MobileNetV2
+from models import vgg_16_bn, ResNet18_widar, ResNet18_cifar, MobileNetV2
 
 
 def Aggregation(w, lens):
@@ -77,7 +77,6 @@ def Aggregation_AdaptiveFL(w, lens, global_model_param):
     return w_avg
 
 
-
 def Aggregation_ScaleFL(w, lens, grad_info, global_model_param):
     w_avg = copy.deepcopy(global_model_param)  # largest model
     count = OrderedDict()
@@ -122,7 +121,10 @@ def get_model_list(args):
             if args.model == 'vgg':
                 net = vgg_16_bn(num_classes=args.num_classes, track_running_stats=False, num_channels=args.num_channels, slim_idx=depth, scale=i)
             elif args.model == 'resnet':
-                net = ResNet18_cifar(num_channels=args.num_channels, num_classes=args.num_classes, track_running_stats=False, slim_idx=depth, scale=i)
+                if args.dataset == 'widar':
+                    net = ResNet18_widar(num_classes=args.num_classes, track_running_stats=False, slim_idx=depth, scale=i)
+                else:
+                    net = ResNet18_cifar(num_channels=args.num_channels, num_classes=args.num_classes, track_running_stats=False, slim_idx=depth, scale=i)
 
             elif args.model == 'mobilenet':
                 net = MobileNetV2(channels= args.num_channels, num_classes=args.num_classes, trs=False, slim_idx=depth, scale=i)

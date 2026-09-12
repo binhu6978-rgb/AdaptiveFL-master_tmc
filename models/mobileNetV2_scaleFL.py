@@ -1,4 +1,6 @@
+import torch
 import torch.nn as nn
+
 
 class LinearBottleNeck(nn.Module):
     def __init__(self, in_channels, out_channels, stride, t, trs):
@@ -36,17 +38,16 @@ class MobileNetV2_scaleFL(nn.Module):
     """
 
     # 6 -> 0.79Length 0.83width 8 -> 0.91Length 0.88width
-    def __init__(self, num_classes, trs=True, scale=1.0, exit1=6, exit2=8):
+    def __init__(self, num_channels=3, num_classes=10, trs=True, scale=1.0, exit1=6, exit2=8):
         super(MobileNetV2_scaleFL, self).__init__()
         self.pre = nn.Sequential(
-            nn.Conv2d(22, int(32 * scale), 3, padding=1),
+            nn.Conv2d(num_channels, int(32 * scale), 3, padding=1),
             nn.BatchNorm2d(int(32 * scale), track_running_stats=trs),
             nn.ReLU6(inplace=True)
         )
         self.exit1 = exit1
         self.exit2 = exit2
 
-        in_channels = int(32 * scale)
         magic_list = [0, 16 * scale, 24 * scale, 32 * scale, 64 * scale, 96 * scale, 160 * scale, 160 * scale,
                       160 * scale, 320 * scale]
         self.block = nn.Sequential(LinearBottleNeck(int(32 * scale), int(16 * scale), 1, 1, trs),
@@ -132,21 +133,25 @@ class MobileNetV2_scaleFL(nn.Module):
             return out
 
 
-if __name__ == '__main__':
-    net = MobileNetV2_scaleFL(22, False, 1, 6, 8)
-
-    # print(net)
-    total = 2275702
-    # summary(net, (50, 22, 32, 32))
-    #
-    # dummy_input = torch.randn(1, 22, 32, 32).to('cuda')
-    # flops, params = profile(net, (dummy_input,))
-    # print('flops: ', flops, 'params: ', params)
-    # print('flops: %.2f M, params: %.2f M' % (flops / 1e6, params / 1e6))
-    for i in range(5, 9):
-        for j in range(20, 100):
-            net = MobileNetV2_scaleFL(22, False, j / 100, i, 8)
-            pre_params = sum(p.numel() for p in net.pre.parameters())
-            block_params = sum(p.numel() for p in net.block[:net.exit1].parameters())
-            class_params = sum(p.numel() for p in net.classifier[0].parameters())
-            print(f"exit is {i} and scale is {j} and param is {(pre_params + block_params + class_params) / total}")
+# if __name__ == '__main__':
+#     net = MobileNetV2_scaleFL(3, 200, False, 1, 6, 8)
+#
+#     # print(net)
+#     total = sum(p.numel() for p in net.parameters())
+#     net = MobileNetV2_scaleFL(3, 200, False, 0.90, 6, 8)
+#     pre_params = sum(p.numel() for p in net.pre.parameters())
+#     block_params = sum(p.numel() for p in net.block[:net.exit1].parameters())
+#     class_params = sum(p.numel() for p in net.classifier[:1].parameters())
+#     block_params2 = sum(p.numel() for p in net.block[:net.exit2].parameters())
+#     class_params2 = sum(p.numel() for p in net.classifier[:2].parameters())
+#     print(f"param 1 is {(pre_params + block_params + class_params) / total}")
+#     print(f"param 2 is {(pre_params + block_params2 + class_params2) / total}")
+#     # CIFAR10
+#     # 25% params -> exit 6 0.87
+#     # 50% params -> exit 8 0.89
+#     # CIFAR100
+#     # 25% params -> exit 6 0.88
+#     # 50% params -> exit 8 0.90
+#     # TinyImageNet
+#     # 25% params -> exit 6 0.88
+#     # 25% params -> exit 6 0.90

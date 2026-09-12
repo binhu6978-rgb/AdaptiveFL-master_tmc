@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+# from torch.profiler import profile
 
 
 class ResidualBlock(nn.Module):
@@ -32,7 +33,7 @@ class ResidualBlock(nn.Module):
 
 class ResNet(nn.Module):
     def __init__(self, ResidualBlock, num_channels=3, num_classes=10, track_running_stats=True, scale=1.0, dataset='cifar',
-                 exit1=6, exit2=7):
+                 exit1=13, exit2=14):
         super(ResNet, self).__init__()
 
         self.dataset = dataset
@@ -49,35 +50,43 @@ class ResNet(nn.Module):
         )
 
         self.block = nn.Sequential()
-        layer1 = self._make_layer(ResidualBlock, int(64 * scale), 2, stride=1,
+        layer1 = self._make_layer(ResidualBlock, int(64 * scale), 3, stride=1,
                                   track_running_stats=track_running_stats)
 
-        layer2 = self._make_layer(ResidualBlock, int(128 * scale), 2, stride=2,
+        layer2 = self._make_layer(ResidualBlock, int(128 * scale), 4, stride=2,
                                   track_running_stats=track_running_stats)
 
-        layer3 = self._make_layer(ResidualBlock, int(256 * scale), 2, stride=2,
+        layer3 = self._make_layer(ResidualBlock, int(256 * scale), 6, stride=2,
                                   track_running_stats=track_running_stats)
 
-        layer4 = self._make_layer(ResidualBlock, int(512 * scale), 2, stride=2,
+        layer4 = self._make_layer(ResidualBlock, int(512 * scale), 3, stride=2,
                                   track_running_stats=track_running_stats)
         self.block.append(layer1[0])
         self.block.append(layer1[1])
+        self.block.append(layer1[2])
         self.block.append(layer2[0])
         self.block.append(layer2[1])
+        self.block.append(layer2[2])
+        self.block.append(layer2[3])
         self.block.append(layer3[0])
         self.block.append(layer3[1])
+        self.block.append(layer3[2])
+        self.block.append(layer3[3])
+        self.block.append(layer3[4])
+        self.block.append(layer3[5])
         self.block.append(layer4[0])
         self.block.append(layer4[1])
+        self.block.append(layer4[2])
 
         self.classifier = nn.ModuleList()
         # magic number matches the output size of the exit1 / exit2
         self.classifier.append(nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
                                              nn.Flatten(),
-                                             nn.Linear(int(2 ** ((exit1 + 1) // 2) * 32 * scale), num_classes)))
+                                             nn.Linear(int(256 * scale), num_classes)))
         self.classifier.append(nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
                                              nn.Flatten(),
-                                             nn.Linear(int(2 ** ((exit2 + 1) // 2) * 32 * scale), num_classes)))
-        self.classifier.append(nn.Sequential(nn.AvgPool2d(4),
+                                             nn.Linear(int(512 * scale), num_classes)))
+        self.classifier.append(nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)),
                                              nn.Flatten(),
                                              nn.Linear(int(512 * scale), num_classes)))
 
@@ -129,22 +138,23 @@ class ResNet(nn.Module):
             return out
 
 
-def ResNet18_cifar_scaleFL(num_channels=3, num_classes=10, track_running_stats=True, scale=1.0, exit1=6, exit2=7):
+def ResNet18_cifar_scaleFL(num_channels=3, num_classes=10, track_running_stats=True, scale=1.0, exit1=13, exit2=14):
     return ResNet(ResidualBlock, num_channels, num_classes, track_running_stats, scale,
                   'cifar', exit1, exit2)  # 默认track_running_stats为true 即保留BN层的历史统计值
 
 
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = ResNet18_cifar_scaleFL(num_classes=10, track_running_stats=True, scale=1, exit1=6, exit2=7).to(device)
-    print(model)
-    total = 11173962
-    for i in range(50, 100):
-        scale = i / 100
-        net = ResNet18_cifar_scaleFL(num_classes=10, track_running_stats=True, scale=scale, exit1=6, exit2=7).to(device)
+    net = ResNet18_cifar_scaleFL(num_channels=3,num_classes=200, track_running_stats=True, scale=1, exit1=13, exit2=14).to(device)
+    exit1 = 13
+    exit2 = 14
 
-        conv_params = sum(p.numel() for p in net.conv1.parameters())
-        block_params = sum(p.numel() for p in net.block[:6].parameters())
-        class_params = sum(p.numel() for p in net.classifier[2].parameters())
-
-        print(f"scale for 0.25 length:{scale} width takes {(conv_params + block_params + class_params) / total}%")
+    total = sum(p.numel() for p in net.parameters())
+    net = ResNet18_cifar_scaleFL(3, 200, True, 0.81, exit1, exit2)
+    block_params = sum(p.numel() for p in net.block[:exit1].parameters())
+    class_params = sum(p.numel() for p in net.classifier[:1].parameters())
+    block_params2 = sum(p.numel() for p in net.block[:exit2].parameters())
+    class_params2 = sum(p.numel() for p in net.classifier[:2].parameters())
+    print(f"param 1 is {(block_params + class_params) / total}")
+    print(f"param 2 is {(block_params2 + class_params2) / total}")
+    # resnet34 scaleFL 25% param -> exit 13 0.81  50% param -> exit 14 0.95
